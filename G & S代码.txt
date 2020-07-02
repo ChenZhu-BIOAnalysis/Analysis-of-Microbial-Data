@@ -1,0 +1,95 @@
+###计算generalist和specialist代码
+##内存清空
+rm(list=ls())
+
+###读入OTU表格数据
+spe<-read.table(file="otus1.txt",header=T,check.names=FALSE,sep="\t")
+rownames(spe) <-spe[,1]
+spe<-spe[,-1]
+
+###表格矩阵行列转置
+tspe=t(spe)
+
+###行列计算赋值
+nrows=ncol(tspe) ###otu数目
+ncols=nrow(tspe) ###样本数
+
+###0-1矩阵的转置，计算OTU出现次数
+spe01=decostand(spe,"pa")
+spe01$sum <- rowSums(spe01) 
+
+###每个样品的OTU在样品中出现的次数
+aa<-  colSums(spe01)
+aa=as.data.frame(aa)
+aa=aa[,1]
+nb_of_elems=aa[1:(length(aa)-1)]
+
+###模拟赋值计算
+n_iter <- 10000 ###重复数
+table_sums <- matrix(data=c(0), nrow=nrows, ncol=n_iter) # table used to store rows sums
+to_sample=seq(1, nrows)
+
+for (i in 1:n_iter){
+  table <- matrix(data=c(0), nrow=nrows, ncol=ncols)
+  for (j in 1:ncols) {
+    rows_to_set = sample(x=to_sample, size=nb_of_elems[j], replace=FALSE)
+    table[rows_to_set, j] <- 1
+  }
+  table_sums[,i] <- apply(table, 1, sum)
+}
+
+###模拟值与实际值分布直方图
+pre_hist=hist(table_sums,breaks=c(0:ncols))
+real_hist=hist(spe01$sum,breaks=c(0:ncols))
+
+###G&S统计计算
+pre_num=(pre_hist$counts)/10000
+real_num = real_hist$counts 
+judge_num=pre_num-real_num
+judge_num=as.data.frame(pre_num-real_num)
+rownames(judge_num) <- rownames(tspe)
+names(judge_num) <- "diff_valu"
+judge_num$numbers <- c(1:ncols)
+cc=which(judge_num[,1]>0)
+
+###阈值下限和阈值上限
+count_min=cc[1]
+count_max=cc[length(cc)]
+
+###G&S OTUs分类
+##generalist分类
+generalist=spe01[spe01$sum>count_max,]
+generalist$classify <- "generalist"
+generalist$merge <- rownames(generalist)
+##specialist分类
+specialist=spe01[spe01$sum<count_min,]
+specialist$classify <- "specialist"
+specialist$merge <- rownames(specialist)
+##comm分类
+comm=spe01[spe01$sum >=count_min & spe01$sum <= count_max,]
+comm$classify <- "comm"
+comm$merge <- rownames(comm)
+
+##结果拼接
+new = merge(specialist,generalist,all=TRUE,sort=F)
+final_data1 = merge(new,comm,all=TRUE,sort=F)
+
+
+##原表结果注释
+pick=length(final_data1)
+result <- final_data1[,(pick-1):pick]
+
+spe$merge<-rownames(spe)
+final_result<-merge(spe,result,by = 'merge', all.x = TRUE)
+
+rownames(final_result) <-final_result[,1]
+final_result<-final_result[,-1]
+
+
+final_result$sort <- as.numeric(substring(rownames(final_result),4,10))
+final_sort_result <- final_result[order(final_result$sort),]
+##输出结果
+
+
+write.csv(final_sort_result,"result_table.csv")
+write.csv(result,"result_annotation.csv")
